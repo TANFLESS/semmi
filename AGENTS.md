@@ -29,3 +29,25 @@
 5. 本次目标定位：
    - 先搭建一个“能跑通全流程”的官方化 baseline（SemiBaseDetector + DINO）；
    - 为后续对齐/迁移 Semi-DETR 细节（损失项、伪标签策略、query 策略等）提供稳定起点。
+
+## 第二次工作（2026-04-13）
+
+### 用户原始提示词（完整记录）
+我强调了要尽量复用官方已有的组件，你没有调用mm官方实现了的DINO，也没有调用mm官方的semi config，改正这个问题。\n你应该将我的提示词和你的汇报完整的添加到AGENTS.md当中以供以后参考，这是我们的第二次交流，记录为第二次工作。
+
+### 本次实现汇报（完整记录）
+1. 已按你的要求将 `configs/SemiDino.py` 改为“**优先复用 MMDetection 3.3.0 官方配置**”的实现方式：
+   - 通过 `_base_` 直接继承官方 `dino/dino-4scale_r50_8xb2-12e_coco.py`，不再手写 DINO 结构细节；
+   - 通过 `_base_` 直接继承官方 `configs/_base_/datasets/semi_coco_detection.py`，不再手写半监督数据增强主结构；
+   - 仅对必要参数做覆盖（类别数、预训练权重、pad 对齐粒度、数据路径、迭代轮数、阈值与损失权重等）。
+
+2. 半监督模型封装保持官方路径：
+   - 继续使用官方 `SemiBaseDetector` 封装 `detector = _base_.model`（即官方 DINO）；
+   - 使用官方 `MultiBranchDataPreprocessor`；
+   - 使用官方 `IterBasedTrainLoop`、`TeacherStudentValLoop`、`MeanTeacherHook`。
+
+3. 关于你关心的“DINO 构建两次修改配置”问题，本次仍完全依赖官方机制：
+   - 不自定义 teacher/student 构建逻辑；
+   - 由官方 `SemiBaseDetector` 内部深拷贝流程处理该问题。
+
+4. `AGENTS.md` 已按你的要求追加本次（第二次）完整“用户提示词 + 实现汇报”记录，便于后续持续迭代追踪。
