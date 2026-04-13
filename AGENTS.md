@@ -1,0 +1,31 @@
+# 工作记录
+
+## 第一次工作（2026-04-13）
+
+### 用户原始提示词（完整记录）
+我正从事半监督目标检测的相关研究。目前半监督目标检测相关研究中，可靠的SOTA还是semi-detr，但是semi-detr使用mm 2.0版本实现了，我目前打算在mm 3.0当中，再一次实现semi-detr。\n目前的计划是先使用SemiBaseDetector包裹一个DINO构建一个能跑通全流程的基本模型。\n代码要参考官方教程（https://mmdetection.readthedocs.io/zh-cn/latest/user_guides/semi_det.html），尽可能的使用官方实现，只修改必要的地方，复用mm官方的SemiBaseDetector和DINO，注意DINO构建两次会更改配置文件的问题。\nthirdpart文件夹用来放参考代码，目前里面放的是mm detection 3.3.0的源代码和semi-detr的源代码。\nSemiTrain.py是启动训练的脚本代码应该在的位置，这个训练脚本应该非常简单，导入config然后开始训练就完事了。\nconfigs文件夹下的SemiDino.py用来放模型的主体代码。SemiDino的代码顶端应该有一些方便修改配置和关键参数的地方，包括但不限于patch size、轮数、训练集的路径、测试集的路径、检查点和可视化数据和训练数据的保存路径等等等等。\n你的代码当中应该有非常详细的注释解释代码的运行逻辑，详尽到每个变量每个函数都是干什么用的，代码开头应该有代码整体的运行逻辑以及完成整个网络需要哪些组件的说明。\n你应该将我的提示词和你的汇报完整的添加到AGENTS.md当中以供以后参考，这是我们的第一次交流，记录为第一次工作。\n你所有的注释和写入md文件的内容都应该是中文。
+
+### 本次实现汇报（完整记录）
+1. 已在 `configs/SemiDino.py` 中完成基于 **MMDetection 3.3.0 官方组件** 的半监督 DINO 配置：
+   - 使用官方 `SemiBaseDetector` 封装官方 `DINO`；
+   - 使用官方 `MultiBranchDataPreprocessor`、`GroupMultiSourceSampler`、`MeanTeacherHook`、`TeacherStudentValLoop`；
+   - 训练流程采用 sup / unsup_teacher / unsup_student 三分支；
+   - 配置中包含数据集路径、迭代轮数、patch/pad 粒度、批大小、采样比、阈值、权重、checkpoint 保存、可视化输出、work_dir 等可调参数入口。
+
+2. 已在 `SemiTrain.py` 中实现“极简训练启动脚本”：
+   - 读取 `configs/SemiDino.py`；
+   - `Runner.from_cfg(cfg)` 构建训练器；
+   - `runner.train()` 启动训练。
+
+3. 关于“DINO 构建两次会更改配置文件”问题：
+   - 该问题在官方 mmdet 3.3.0 的 `SemiBaseDetector` 中已经通过对 `detector` 配置做深拷贝后分别构建 teacher/student 来规避；
+   - 本次实现未重写该机制，仅复用官方逻辑。
+
+4. 代码注释与文档要求：
+   - 所有新增注释均为中文；
+   - 配置文件开头添加了整体运行逻辑、关键组件说明、实现注意事项；
+   - 关键变量与关键段落均提供中文用途说明。
+
+5. 本次目标定位：
+   - 先搭建一个“能跑通全流程”的官方化 baseline（SemiBaseDetector + DINO）；
+   - 为后续对齐/迁移 Semi-DETR 细节（损失项、伪标签策略、query 策略等）提供稳定起点。
