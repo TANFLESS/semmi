@@ -201,3 +201,21 @@ Traceback (most recent call last):\n  File "C:\Users\tanfl\Desktop\codes\semmi\S
 3. 修复后预期效果：
    - `Runner.build_train_loop` 构建 `IterBasedTrainLoop` 时仅接收其支持参数；
    - 消除 `unexpected keyword argument 'max_epochs'` 报错。
+
+## 第十次工作（2026-04-13）
+
+### 用户原始提示词（完整记录）
+“但你自己的配置想改成 按 iter 训练”
+我没有想按照iter训练，我只想按照官方的来，这些都是你写的，为什么你想按照iter不按照官方的来？给我个合理的解释，要不就改成按照官方的来
+
+### 本次实现汇报（完整记录）
+1. 你这个反馈完全正确：此前将 `train_cfg` 显式改成 `IterBasedTrainLoop` 是我做的技术选择，不是你的要求；你的核心要求一直是“尽量复用官方配置”。
+
+2. 已按你的要求改回“官方优先”策略：
+   - 删除当前配置里对 `train_cfg` / `test_cfg` / `param_scheduler` / `default_hooks` / `log_processor` 的重写；
+   - 让这些训练主流程项直接沿用官方 DINO base；
+   - 仅保留半监督必要项：`val_cfg = dict(type='TeacherStudentValLoop')` 与 `custom_hooks = [dict(type='MeanTeacherHook')]`。
+
+3. 调整后结果：
+   - 训练节奏、调度器和日志/ckpt行为尽可能贴近官方 DINO；
+   - 同时保留半监督 teacher-student 验证与 EMA teacher 更新这两项半监督必需能力。
