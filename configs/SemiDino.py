@@ -38,10 +38,6 @@ LABELED_IMG_PREFIX = 'train2017/'
 UNLABELED_IMG_PREFIX = 'unlabeled2017/'
 VAL_IMG_PREFIX = 'val2017/'
 
-# 训练总迭代与验证间隔。
-MAX_ITERS = 180000
-VAL_INTERVAL = 5000
-
 # DINO 预处理 pad 对齐粒度（保留为可调入口）。
 PATCH_SIZE_DIVISOR = 1
 
@@ -244,31 +240,16 @@ val_evaluator = dict(
 test_evaluator = val_evaluator
 
 # =========================
-# 5) 官方半监督训练 loop / hook
+# 5) 训练 loop 与调度器：尽量复用官方 DINO 基线
 # =========================
-
-train_cfg = dict(type='IterBasedTrainLoop', max_iters=MAX_ITERS, val_interval=VAL_INTERVAL)
+#
+# 说明：
+# - train_cfg / test_cfg / param_scheduler 不在此处重写，直接沿用 dino base；
+# - 仅将 val_loop 改为半监督需要的 TeacherStudentValLoop；
+# - 这样可以最大程度保持“按官方 DINO 配置训练”。
 val_cfg = dict(type='TeacherStudentValLoop')
-test_cfg = dict(type='TestLoop')
-
-param_scheduler = [
-    dict(type='LinearLR', start_factor=1e-3, by_epoch=False, begin=0, end=1000),
-    dict(
-        type='MultiStepLR',
-        begin=0,
-        end=MAX_ITERS,
-        by_epoch=False,
-        milestones=[int(MAX_ITERS * 0.8), int(MAX_ITERS * 0.9)],
-        gamma=0.1,
-    ),
-]
 
 custom_hooks = [dict(type='MeanTeacherHook')]
-default_hooks = dict(
-    checkpoint=dict(type='CheckpointHook', by_epoch=False, interval=5000, max_keep_ckpts=3),
-    logger=dict(type='LoggerHook', interval=50),
-)
-log_processor = dict(by_epoch=False)
 
 # 可视化与输出目录。
 vis_backends = [dict(type='LocalVisBackend', save_dir=VIS_BACKEND_SAVE_DIR)]
