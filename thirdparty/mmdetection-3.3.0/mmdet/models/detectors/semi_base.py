@@ -45,8 +45,11 @@ class SemiBaseDetector(BaseDetector):
                  init_cfg: OptMultiConfig = None) -> None:
         super().__init__(
             data_preprocessor=data_preprocessor, init_cfg=init_cfg)
-        self.student = MODELS.build(detector)
-        self.teacher = MODELS.build(detector)
+        # 注意：某些 detector（例如 DINO）会在 build 过程中就地修改配置字典。
+        # 若 teacher/student 复用同一个 detector 配置对象，第二次 build 可能因配置被污染而报错。
+        # 因此这里显式深拷贝两份配置，保证两次构建互不影响。
+        self.student = MODELS.build(copy.deepcopy(detector))
+        self.teacher = MODELS.build(copy.deepcopy(detector))
         self.semi_train_cfg = semi_train_cfg
         self.semi_test_cfg = semi_test_cfg
         if self.semi_train_cfg.get('freeze_teacher', True) is True:
