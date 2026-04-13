@@ -164,3 +164,21 @@ C:\Users\tanfl\.conda\envs\mm\python.exe C:\Users\tanfl\Desktop\codes\semmi\Semi
    - 初始化 mmdet 的 registry 与 default scope；
    - 消除 `None.registry` / `DetLocalVisualizer is not in mmengine::visualizer registry` 这类典型未注册错误；
    - 保持训练脚本结构依然“极简”，仅新增一行必要初始化。
+
+## 第八次工作（2026-04-13）
+
+### 用户原始提示词（完整记录）
+我哪来的mmdet啊大哥，我的mmdet放在thirdparty里了啊
+
+### 本次实现汇报（完整记录）
+1. 已确认你的反馈是对的：之前实现默认你有可直接 `import mmdet` 的环境，这在“仅把 mmdet 放在 `thirdparty/`、未 pip 安装”场景下会失效。
+
+2. 已修正 `SemiTrain.py` 的导入策略为“**优先使用仓库内 thirdparty 源码**”：
+   - 新增 `_ensure_local_mmdet_importable()`；
+   - 先尝试直接 `import mmdet`，若失败则把 `thirdparty/mmdetection-3.3.0` 注入 `sys.path`；
+   - 随后再延迟导入 `from mmdet.utils import register_all_modules` 并执行注册。
+
+3. 修复后的行为：
+   - 若你环境已安装 mmdet：继续直接使用已安装版本；
+   - 若未安装但仓库有 `thirdparty/mmdetection-3.3.0`：自动走本地源码；
+   - 避免再次出现“你说的对，但脚本还在假设全局有 mmdet 包”的问题。
