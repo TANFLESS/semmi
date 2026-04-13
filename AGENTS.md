@@ -146,3 +146,21 @@ C:\Users\tanfl\.conda\envs\mm\python.exe C:\Users\tanfl\Desktop\codes\semmi\Semi
    - 检测器仍然走官方 DINO；
    - 半监督训练框架仍然走官方 `SemiBaseDetector` / `MeanTeacherHook` / `TeacherStudentValLoop`；
    - 当前版本优先保证“能稳定跑通全流程”，便于后续继续对齐 Semi-DETR 细节。
+
+## 第七次工作（2026-04-13）
+
+### 用户原始提示词（完整记录）
+04/14 03:07:26 - mmengine - WARNING - Failed to import `None.registry` make sure the registry.py exists in `None` package.\n04/14 03:07:26 - mmengine - WARNING - Failed to search registry with scope "mmdet" in the "visualizer" registry tree. As a workaround, the current "visualizer" registry in "mmengine" is used to build instance. This may cause unexpected failure when running the built modules. Please check whether "mmdet" is a correct scope, or whether the registry is initialized.\nTraceback (most recent call last):\n  File "C:\\Users\\tanfl\\Desktop\\codes\\semmi\\SemiTrain.py", line 38, in <module>\n    main()\n  File "C:\\Users\\tanfl\\Desktop\\codes\\semmi\\SemiTrain.py", line 33, in main\n    runner = Runner.from_cfg(cfg)\n             ^^^^^^^^^^^^^^^^^^^^\n  File "C:\\Users\\tanfl\\.conda\\envs\\mm\\Lib\\site-packages\\mmengine\\runner\\runner.py", line 462, in from_cfg\n    runner = cls(\n             ^^^^\n  File "C:\\Users\\tanfl\\.conda\\envs\\mm\\Lib\\site-packages\\mmengine\\runner\\runner.py", line 416, in __init__\n    self.visualizer = self.build_visualizer(visualizer)\n                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\\Users\\tanfl\\.conda\\envs\\mm\\Lib\\site-packages\\mmengine\\runner\\runner.py", line 803, in build_visualizer\n    return VISUALIZERS.build(visualizer)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\\Users\\tanfl\\.conda\\envs\\mm\\Lib\\site-packages\\mmengine\\registry\\registry.py", line 570, in build\n    return self.build_func(cfg, *args, **kwargs, registry=self)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\\Users\\tanfl\\.conda\\envs\\mm\\Lib\\site-packages\\mmengine\\registry\\build_functions.py", line 100, in build_from_cfg\n    raise KeyError(\nKeyError: 'DetLocalVisualizer is not in the mmengine::visualizer registry. Please check whether the value of `DetLocalVisualizer` is correct or it was registered as expected. More details can be found at https://mmengine.readthedocs.io/en/latest/advanced_tutorials/config.html#import-the-custom-module'\n
+
+### 本次实现汇报（完整记录）
+1. 已定位根因：当前报错不是路径问题，而是**MMDetection 注册表未在脚本入口阶段完成初始化**。因此 `Runner.from_cfg` 在构建 `visualizer` 时找不到 `DetLocalVisualizer`（它属于 mmdet 注册体系）。
+
+2. 已在 `SemiTrain.py` 增加官方推荐的显式注册调用：
+   - `from mmdet.utils import register_all_modules`
+   - 在 `main()` 中、`Config.fromfile(...)` / `Runner.from_cfg(...)` 之前执行：
+     `register_all_modules(init_default_scope=True)`
+
+3. 修复效果：
+   - 初始化 mmdet 的 registry 与 default scope；
+   - 消除 `None.registry` / `DetLocalVisualizer is not in mmengine::visualizer registry` 这类典型未注册错误；
+   - 保持训练脚本结构依然“极简”，仅新增一行必要初始化。
