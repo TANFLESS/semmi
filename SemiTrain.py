@@ -15,6 +15,7 @@ SemiTrain.py
 
 from mmengine.config import Config
 from mmengine.runner import Runner
+from mmdet.utils import register_all_modules
 
 
 # 默认配置路径：可按需改成其他配置文件。
@@ -29,6 +30,11 @@ def main() -> None:
     2) 使用 Runner.from_cfg 根据配置实例化训练器；
     3) 调用 train() 开始训练流程。
     """
+    # 显式注册 MMDetection 全部模块并初始化 default scope。
+    # 目的：避免 Runner 构建 visualizer 时出现
+    # “DetLocalVisualizer 未注册 / scope=None” 的报错。
+    register_all_modules(init_default_scope=True)
+
     cfg = Config.fromfile(DEFAULT_CONFIG_PATH)
     runner = Runner.from_cfg(cfg)
     runner.train()
