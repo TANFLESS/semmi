@@ -87,10 +87,13 @@ from mmengine.config import Config
 #   Windows 下因运行目录不同导致 FileNotFoundError。
 _THIS_DIR = Path(__file__).resolve().parent
 _MMDET_CONFIG_ROOT = _THIS_DIR.parent / 'thirdparty' / 'mmdetection-3.3.0' / 'configs'
-_DINO_CONFIG_PATH = _MMDET_CONFIG_ROOT / 'dino' / 'dino-4scale_r50_8xb2-12e_coco.py'
 _SEMI_DATASET_CONFIG_PATH = _MMDET_CONFIG_ROOT / '_base_' / 'datasets' / 'semi_coco_detection.py'
 
-_base_ = [str(_DINO_CONFIG_PATH)]
+# 注意：_base_ 会被 mmengine 预解析，不能依赖后续 Python 变量；
+# 这里必须写“字面量路径字符串”。使用相对路径可同时满足：
+# 1) 写法短，不受绝对目录影响；
+# 2) mmengine 会按当前配置文件位置解析，相比运行目录更稳定。
+_base_ = ['../thirdparty/mmdetection-3.3.0/configs/dino/dino-4scale_r50_8xb2-12e_coco.py']
 
 semi_dataset_cfg = Config.fromfile(str(_SEMI_DATASET_CONFIG_PATH))
 
