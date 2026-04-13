@@ -66,6 +66,7 @@ WORK_DIR = './work_dirs/semi_dino_r50_4scale_coco'
 VIS_BACKEND_SAVE_DIR = './work_dirs/semi_dino_r50_4scale_coco/vis_data'
 
 from copy import deepcopy
+from pathlib import Path
 
 from mmengine.config import Config
 
@@ -81,11 +82,17 @@ from mmengine.config import Config
 #
 # 修复策略：
 # - _base_ 仅保留 dino 官方配置（避免 base 间重复键）；
-# - semi 数据配置通过 Config.fromfile 单独读取，再深拷贝需要的官方字段复用。
-_base_ = ['../thirdparty/mmdetection-3.3.0/configs/dino/dino-4scale_r50_8xb2-12e_coco.py']
+# - semi 数据配置通过 Config.fromfile 单独读取，再深拷贝需要的官方字段复用；
+# - 所有第三方配置路径都基于“当前配置文件所在目录”拼绝对路径，避免
+#   Windows 下因运行目录不同导致 FileNotFoundError。
+_THIS_DIR = Path(__file__).resolve().parent
+_MMDET_CONFIG_ROOT = _THIS_DIR.parent / 'thirdparty' / 'mmdetection-3.3.0' / 'configs'
+_DINO_CONFIG_PATH = _MMDET_CONFIG_ROOT / 'dino' / 'dino-4scale_r50_8xb2-12e_coco.py'
+_SEMI_DATASET_CONFIG_PATH = _MMDET_CONFIG_ROOT / '_base_' / 'datasets' / 'semi_coco_detection.py'
 
-semi_dataset_cfg = Config.fromfile(
-    '../thirdparty/mmdetection-3.3.0/configs/_base_/datasets/semi_coco_detection.py')
+_base_ = [str(_DINO_CONFIG_PATH)]
+
+semi_dataset_cfg = Config.fromfile(str(_SEMI_DATASET_CONFIG_PATH))
 
 # =========================
 # 2) 直接复用官方 DINO（来自 dino base config）
