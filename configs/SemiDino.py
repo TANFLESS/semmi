@@ -247,7 +247,12 @@ test_evaluator = val_evaluator
 # 5) 官方半监督训练 loop / hook
 # =========================
 
-train_cfg = dict(type='IterBasedTrainLoop', max_iters=MAX_ITERS, val_interval=VAL_INTERVAL)
+train_cfg = dict(
+    _delete_=True,
+    type='IterBasedTrainLoop',
+    max_iters=MAX_ITERS,
+    val_interval=VAL_INTERVAL,
+)
 val_cfg = dict(type='TeacherStudentValLoop')
 test_cfg = dict(type='TestLoop')
 
