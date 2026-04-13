@@ -94,3 +94,29 @@ Traceback (most recent call last):\n  File "C:\Users\tanfl\Desktop\codes\semmi\S
 3. 修复后行为：
    - 无论你从哪个工作目录启动 `SemiTrain.py`，都能稳定定位到 `semmi/thirdparty/mmdetection-3.3.0/configs/...`；
    - 保持“官方 DINO + 官方 semi 数据配置复用”的设计不变。
+
+## 第五次工作（2026-04-13）
+
+### 用户原始提示词（完整记录）
+C:\Users\tanfl\.conda\envs\mm\python.exe C:\Users\tanfl\Desktop\codes\semmi\SemiTrain.py \nTraceback (most recent call last):\n  File "C:\Users\tanfl\Desktop\codes\semmi\SemiTrain.py", line 38, in <module>\n    main()\n  File "C:\Users\tanfl\Desktop\codes\semmi\SemiTrain.py", line 32, in main\n    cfg = Config.fromfile(DEFAULT_CONFIG_PATH)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\Users\tanfl\.conda\envs\mm\Lib\site-packages\mmengine\config\config.py", line 461, in fromfile\n    cfg_dict, cfg_text, env_variables = Config._file2dict(\n                                        ^^^^^^^^^^^^^^^^^^\n  File "C:\Users\tanfl\.conda\envs\mm\Lib\site-packages\mmengine\config\config.py", line 947, in _file2dict\n    raise e\n  File "C:\Users\tanfl\.conda\envs\mm\Lib\site-packages\mmengine\config\config.py", line 885, in _file2dict\n    for base_cfg_path in Config._get_base_files(\n                         ^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\Users\tanfl\.conda\envs\mm\Lib\site-packages\mmengine\config\config.py", line 1230, in _get_base_files\n    base_files = eval(compile(base_code, '',\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "", line 93, in <module>\nNameError: name '_DINO_CONFIG_PATH' is not defined\n解释并解决这个报错。不要再简单粗暴的解决路径问题了，想想怎么优雅的解决，比如base写短一点吗，具体路径写长一点，我不想再反复问你路径这种小问题了。
+
+### 本次实现汇报（完整记录）
+1. 已定位本次报错根因：`_base_` 字段在 mmengine 中会先被“预解析”，此时配置文件内后续定义的 Python 变量还不可用，因此写成 `_base_ = [str(_DINO_CONFIG_PATH)]` 会触发 `NameError`。
+
+2. 已按“更优雅、可维护、避免路径反复踩坑”的方式修复：
+   - 将 `_base_` 改为**短字面量相对路径**：
+     `../thirdparty/mmdetection-3.3.0/configs/dino/dino-4scale_r50_8xb2-12e_coco.py`；
+   - 该写法由 mmengine 按“当前配置文件位置”解析，不依赖运行工作目录，也不依赖 Python 变量求值。
+
+3. 同时保留了对 `semi_coco_detection.py` 的“绝对路径读取”策略：
+   - 继续通过 `Path(__file__).resolve().parent` 计算配置文件所在目录；
+   - 再拼接到 `thirdparty/mmdetection-3.3.0/configs/_base_/datasets/semi_coco_detection.py` 并 `Config.fromfile(...)`；
+   - 这样 `Config.fromfile` 这一路径也不受启动目录影响。
+
+4. 最终形成的稳定规则（后续可长期沿用）：
+   - `_base_`：用简短的字面量相对路径（避免预解析变量问题）；
+   - 手动 `Config.fromfile(...)`：用基于 `__file__` 的绝对路径（避免运行目录差异）。
+
+5. 本次修复保持了既有设计目标：
+   - 仍然复用官方 DINO 与官方 semi 数据配置；
+   - 未引入额外自定义检测器实现，方便后续继续对齐 Semi-DETR。
