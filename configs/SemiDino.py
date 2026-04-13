@@ -1,26 +1,25 @@
 """
-SemiDino：在 MMDetection 3.3.0 中用“官方 DINO + 官方半监督数据基座”拼装的半监督配置。
+SemiDino：在 MMDetection 3.3.0 中用“官方 DINO + 官方半监督训练组件”拼装的半监督配置。
 
 ==============================
-整体运行逻辑（严格复用官方实现）
+整体运行逻辑（路径无关版）
 ==============================
-1) 先继承官方 DINO 检测器配置：
+1) 仅继承官方 DINO 配置：
    - 来源：configs/dino/dino-4scale_r50_8xb2-12e_coco.py
-   - 该文件中的 `model` 本身就是官方 DINO 完整实现。
-2) 再继承官方半监督数据配置：
-   - 来源：configs/_base_/datasets/semi_coco_detection.py
-   - 该文件提供官方 MultiBranch pipeline、ConcatDataset、
-     GroupMultiSourceSampler 等半监督数据流。
-3) 以官方 `SemiBaseDetector` 封装“官方 DINO 检测器”：
-   - teacher / student 都由同一个 DINO 配置构建；
-   - `SemiBaseDetector` 内部会深拷贝 detector 配置，规避二次 build 修改问题。
-4) 训练与验证流程继续使用官方半监督范式：
-   - IterBasedTrainLoop + TeacherStudentValLoop + MeanTeacherHook。
+   - 该 base 提供官方 DINO 检测器与其训练默认项。
+2) 半监督数据流不再在配置执行期调用 Config.fromfile：
+   - 直接在本文件中按官方 semi_coco_detection.py 结构定义；
+   - 这样可彻底规避 __file__ / 工作目录 / 相对路径解释差异等问题。
+3) 使用官方 SemiBaseDetector 封装官方 DINO：
+   - teacher/student 均由官方机制构建；
+   - 保持与官方半监督训练栈一致（MeanTeacherHook、TeacherStudentValLoop 等）。
 
 说明：
-- 本文件不重新实现 DINO 结构，不自定义新检测器类；
-- 只做“参数入口 + 官方配置拼接 + 必要覆盖”。
+- 本文件重点是“稳定可运行 + 复用官方组件 + 路径零陷阱”；
+- 不新增自定义检测器类，只做必要参数覆盖。
 """
+
+from copy import deepcopy
 
 # =========================
 # 0) 便捷修改区（实验常改参数）
@@ -65,43 +64,15 @@ MIN_PSEUDO_BBOX_WH = (1e-2, 1e-2)
 WORK_DIR = './work_dirs/semi_dino_r50_4scale_coco'
 VIS_BACKEND_SAVE_DIR = './work_dirs/semi_dino_r50_4scale_coco/vis_data'
 
-from copy import deepcopy
-from pathlib import Path
-
-from mmengine.config import Config
-
 # =========================
-# 1) 继承官方配置（关键修复）
+# 1) 仅继承官方 DINO（避免 base 重复键）
 # =========================
-#
-# 说明：
-# - 不能把 “完整 dino 配置” 和 “semi_coco_detection 数据基座” 同时放进 _base_；
-# - 因为 dino 配置里已经继承了 coco 数据集基座，semi_coco_detection 里也定义了
-#   dataset_type / data_root / train_dataloader / val_dataloader 等同名顶层键；
-# - mmengine 会在“多个 base”阶段直接报 Duplicate key 错误。
-#
-# 修复策略：
-# - _base_ 仅保留 dino 官方配置（避免 base 间重复键）；
-# - semi 数据配置通过 Config.fromfile 单独读取，再深拷贝需要的官方字段复用；
-# - 所有第三方配置路径都基于“当前配置文件所在目录”拼绝对路径，避免
-#   Windows 下因运行目录不同导致 FileNotFoundError。
-_THIS_DIR = Path(__file__).resolve().parent
-_MMDET_CONFIG_ROOT = _THIS_DIR.parent / 'thirdparty' / 'mmdetection-3.3.0' / 'configs'
-_SEMI_DATASET_CONFIG_PATH = _MMDET_CONFIG_ROOT / '_base_' / 'datasets' / 'semi_coco_detection.py'
-
-# 注意：_base_ 会被 mmengine 预解析，不能依赖后续 Python 变量；
-# 这里必须写“字面量路径字符串”。使用相对路径可同时满足：
-# 1) 写法短，不受绝对目录影响；
-# 2) mmengine 会按当前配置文件位置解析，相比运行目录更稳定。
 _base_ = ['../thirdparty/mmdetection-3.3.0/configs/dino/dino-4scale_r50_8xb2-12e_coco.py']
-
-semi_dataset_cfg = Config.fromfile(str(_SEMI_DATASET_CONFIG_PATH))
 
 # =========================
 # 2) 直接复用官方 DINO（来自 dino base config）
 # =========================
 
-# 这里不手写 DINO 结构，直接拿官方 dino 配置作为 detector。
 detector = _base_.model
 
 # 仅覆盖必要参数入口。
@@ -129,41 +100,147 @@ model = dict(
     semi_test_cfg=dict(predict_on='teacher'))
 
 # =========================
-# 4) 复用官方 semi 数据配置并覆盖路径
+# 4) 官方 semi_coco_detection 数据流（内联版，避免路径问题）
 # =========================
 
 backend_args = None
+dataset_type = 'CocoDataset'
 
-labeled_dataset = deepcopy(semi_dataset_cfg.labeled_dataset)
-unlabeled_dataset = deepcopy(semi_dataset_cfg.unlabeled_dataset)
+# 以下增强空间与 pipeline 结构对齐官方 semi_coco_detection.py。
+color_space = [
+    [dict(type='ColorTransform')],
+    [dict(type='AutoContrast')],
+    [dict(type='Equalize')],
+    [dict(type='Sharpness')],
+    [dict(type='Posterize')],
+    [dict(type='Solarize')],
+    [dict(type='Color')],
+    [dict(type='Contrast')],
+    [dict(type='Brightness')],
+]
 
-labeled_dataset.data_root = DATA_ROOT
-labeled_dataset.ann_file = LABELED_ANN_FILE
-labeled_dataset.data_prefix = dict(img=LABELED_IMG_PREFIX)
-labeled_dataset.backend_args = backend_args
+geometric = [
+    [dict(type='Rotate')],
+    [dict(type='ShearX')],
+    [dict(type='ShearY')],
+    [dict(type='TranslateX')],
+    [dict(type='TranslateY')],
+]
 
-unlabeled_dataset.data_root = DATA_ROOT
-unlabeled_dataset.ann_file = UNLABELED_ANN_FILE
-unlabeled_dataset.data_prefix = dict(img=UNLABELED_IMG_PREFIX)
-unlabeled_dataset.backend_args = backend_args
+scale = [(1333, 400), (1333, 1200)]
+branch_field = ['sup', 'unsup_teacher', 'unsup_student']
+
+sup_pipeline = [
+    dict(type='LoadImageFromFile', backend_args=backend_args),
+    dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='RandomResize', scale=scale, keep_ratio=True),
+    dict(type='RandomFlip', prob=0.5),
+    dict(type='RandAugment', aug_space=color_space, aug_num=1),
+    dict(type='FilterAnnotations', min_gt_bbox_wh=(1e-2, 1e-2)),
+    dict(type='MultiBranch', branch_field=branch_field, sup=dict(type='PackDetInputs')),
+]
+
+weak_pipeline = [
+    dict(type='RandomResize', scale=scale, keep_ratio=True),
+    dict(type='RandomFlip', prob=0.5),
+    dict(
+        type='PackDetInputs',
+        meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
+                   'scale_factor', 'flip', 'flip_direction', 'homography_matrix')),
+]
+
+strong_pipeline = [
+    dict(type='RandomResize', scale=scale, keep_ratio=True),
+    dict(type='RandomFlip', prob=0.5),
+    dict(
+        type='RandomOrder',
+        transforms=[
+            dict(type='RandAugment', aug_space=color_space, aug_num=1),
+            dict(type='RandAugment', aug_space=geometric, aug_num=1),
+        ]),
+    dict(type='RandomErasing', n_patches=(1, 5), ratio=(0, 0.2)),
+    dict(type='FilterAnnotations', min_gt_bbox_wh=(1e-2, 1e-2)),
+    dict(
+        type='PackDetInputs',
+        meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
+                   'scale_factor', 'flip', 'flip_direction', 'homography_matrix')),
+]
+
+unsup_pipeline = [
+    dict(type='LoadImageFromFile', backend_args=backend_args),
+    dict(type='LoadEmptyAnnotations'),
+    dict(
+        type='MultiBranch',
+        branch_field=branch_field,
+        unsup_teacher=weak_pipeline,
+        unsup_student=strong_pipeline,
+    ),
+]
+
+test_pipeline = [
+    dict(type='LoadImageFromFile', backend_args=backend_args),
+    dict(type='Resize', scale=(1333, 800), keep_ratio=True),
+    dict(
+        type='PackDetInputs',
+        meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape', 'scale_factor')),
+]
+
+labeled_dataset = dict(
+    type=dataset_type,
+    data_root=DATA_ROOT,
+    ann_file=LABELED_ANN_FILE,
+    data_prefix=dict(img=LABELED_IMG_PREFIX),
+    filter_cfg=dict(filter_empty_gt=True, min_size=32),
+    pipeline=sup_pipeline,
+    backend_args=backend_args,
+)
+
+unlabeled_dataset = dict(
+    type=dataset_type,
+    data_root=DATA_ROOT,
+    ann_file=UNLABELED_ANN_FILE,
+    data_prefix=dict(img=UNLABELED_IMG_PREFIX),
+    filter_cfg=dict(filter_empty_gt=False),
+    pipeline=unsup_pipeline,
+    backend_args=backend_args,
+)
 
 train_dataloader = dict(
     _delete_=True,
     batch_size=BATCH_SIZE,
     num_workers=NUM_WORKERS,
+    persistent_workers=True,
     sampler=dict(type='GroupMultiSourceSampler', batch_size=BATCH_SIZE, source_ratio=SOURCE_RATIO),
-    dataset=dict(type='ConcatDataset', datasets=[labeled_dataset, unlabeled_dataset]))
+    dataset=dict(type='ConcatDataset', datasets=[deepcopy(labeled_dataset), deepcopy(unlabeled_dataset)]),
+)
 
 val_dataloader = dict(
     _delete_=True,
+    batch_size=1,
+    num_workers=2,
+    persistent_workers=True,
+    drop_last=False,
+    sampler=dict(type='DefaultSampler', shuffle=False),
     dataset=dict(
+        type=dataset_type,
         data_root=DATA_ROOT,
         ann_file=VAL_ANN_FILE,
         data_prefix=dict(img=VAL_IMG_PREFIX),
-        backend_args=backend_args))
+        test_mode=True,
+        pipeline=test_pipeline,
+        backend_args=backend_args,
+    ),
+)
+
 test_dataloader = val_dataloader
 
-val_evaluator = dict(ann_file=DATA_ROOT + VAL_ANN_FILE)
+val_evaluator = dict(
+    type='CocoMetric',
+    ann_file=DATA_ROOT + VAL_ANN_FILE,
+    metric='bbox',
+    format_only=False,
+    backend_args=backend_args,
+)
 test_evaluator = val_evaluator
 
 # =========================
@@ -182,13 +259,15 @@ param_scheduler = [
         end=MAX_ITERS,
         by_epoch=False,
         milestones=[int(MAX_ITERS * 0.8), int(MAX_ITERS * 0.9)],
-        gamma=0.1)
+        gamma=0.1,
+    ),
 ]
 
 custom_hooks = [dict(type='MeanTeacherHook')]
 default_hooks = dict(
     checkpoint=dict(type='CheckpointHook', by_epoch=False, interval=5000, max_keep_ckpts=3),
-    logger=dict(type='LoggerHook', interval=50))
+    logger=dict(type='LoggerHook', interval=50),
+)
 log_processor = dict(by_epoch=False)
 
 # 可视化与输出目录。
