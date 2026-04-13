@@ -65,14 +65,34 @@ MIN_PSEUDO_BBOX_WH = (1e-2, 1e-2)
 WORK_DIR = './work_dirs/semi_dino_r50_4scale_coco'
 VIS_BACKEND_SAVE_DIR = './work_dirs/semi_dino_r50_4scale_coco/vis_data'
 
-# =========================
-# 1) 继承官方配置
-# =========================
+from copy import deepcopy
+from pathlib import Path
 
-_base_ = [
-    '../thirdparty/mmdetection-3.3.0/configs/dino/dino-4scale_r50_8xb2-12e_coco.py',
-    '../thirdparty/mmdetection-3.3.0/configs/_base_/datasets/semi_coco_detection.py',
-]
+from mmengine.config import Config
+
+# =========================
+# 1) 继承官方配置（关键修复）
+# =========================
+#
+# 说明：
+# - 不能把 “完整 dino 配置” 和 “semi_coco_detection 数据基座” 同时放进 _base_；
+# - 因为 dino 配置里已经继承了 coco 数据集基座，semi_coco_detection 里也定义了
+#   dataset_type / data_root / train_dataloader / val_dataloader 等同名顶层键；
+# - mmengine 会在“多个 base”阶段直接报 Duplicate key 错误。
+#
+# 修复策略：
+# - _base_ 仅保留 dino 官方配置（避免 base 间重复键）；
+# - semi 数据配置通过 Config.fromfile 单独读取，再深拷贝需要的官方字段复用；
+# - 所有第三方配置路径都基于“当前配置文件所在目录”拼绝对路径，避免
+#   Windows 下因运行目录不同导致 FileNotFoundError。
+_THIS_DIR = Path(__file__).resolve().parent
+_MMDET_CONFIG_ROOT = _THIS_DIR.parent / 'thirdparty' / 'mmdetection-3.3.0' / 'configs'
+_DINO_CONFIG_PATH = _MMDET_CONFIG_ROOT / 'dino' / 'dino-4scale_r50_8xb2-12e_coco.py'
+_SEMI_DATASET_CONFIG_PATH = _MMDET_CONFIG_ROOT / '_base_' / 'datasets' / 'semi_coco_detection.py'
+
+_base_ = [str(_DINO_CONFIG_PATH)]
+
+semi_dataset_cfg = Config.fromfile(str(_SEMI_DATASET_CONFIG_PATH))
 
 # =========================
 # 2) 直接复用官方 DINO（来自 dino base config）
@@ -106,13 +126,13 @@ model = dict(
     semi_test_cfg=dict(predict_on='teacher'))
 
 # =========================
-# 4) 直接复用官方 semi 数据配置并覆盖路径
+# 4) 复用官方 semi 数据配置并覆盖路径
 # =========================
 
 backend_args = None
 
-labeled_dataset = _base_.labeled_dataset
-unlabeled_dataset = _base_.unlabeled_dataset
+labeled_dataset = deepcopy(semi_dataset_cfg.labeled_dataset)
+unlabeled_dataset = deepcopy(semi_dataset_cfg.unlabeled_dataset)
 
 labeled_dataset.data_root = DATA_ROOT
 labeled_dataset.ann_file = LABELED_ANN_FILE
@@ -125,12 +145,14 @@ unlabeled_dataset.data_prefix = dict(img=UNLABELED_IMG_PREFIX)
 unlabeled_dataset.backend_args = backend_args
 
 train_dataloader = dict(
+    _delete_=True,
     batch_size=BATCH_SIZE,
     num_workers=NUM_WORKERS,
     sampler=dict(type='GroupMultiSourceSampler', batch_size=BATCH_SIZE, source_ratio=SOURCE_RATIO),
     dataset=dict(type='ConcatDataset', datasets=[labeled_dataset, unlabeled_dataset]))
 
 val_dataloader = dict(
+    _delete_=True,
     dataset=dict(
         data_root=DATA_ROOT,
         ann_file=VAL_ANN_FILE,

@@ -51,3 +51,46 @@
    - 由官方 `SemiBaseDetector` 内部深拷贝流程处理该问题。
 
 4. `AGENTS.md` 已按你的要求追加本次（第二次）完整“用户提示词 + 实现汇报”记录，便于后续持续迭代追踪。
+
+## 第三次工作（2026-04-13）
+
+### 用户原始提示词（完整记录）
+Traceback (most recent call last):\n  File "C:\Users\tanfl\Desktop\codes\semmi\SemiTrain.py", line 38, in <module>\n    main()\n  File "C:\Users\tanfl\Desktop\codes\semmi\SemiTrain.py", line 32, in main\n    cfg = Config.fromfile(DEFAULT_CONFIG_PATH)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\Users\tanfl\.conda\envs\mm\Lib\site-packages\mmengine\config\config.py", line 461, in fromfile\n    cfg_dict, cfg_text, env_variables = Config._file2dict(\n                                        ^^^^^^^^^^^^^^^^^^\n  File "C:\Users\tanfl\.conda\envs\mm\Lib\site-packages\mmengine\config\config.py", line 947, in _file2dict\n    raise e\n  File "C:\Users\tanfl\.conda\envs\mm\Lib\site-packages\mmengine\config\config.py", line 899, in _file2dict\n    raise KeyError(\nKeyError: "Duplicate key is not allowed among bases. Duplicate keys: {'test_pipeline', 'dataset_type', 'test_evaluator', 'val_evaluator', 'val_dataloader', 'train_dataloader', 'data_root', 'test_dataloader', 'backend_args'}"
+
+
+解释并解决这个报错，记录为第三次工作。
+\n
+
+### 本次实现汇报（完整记录）
+1. 已定位报错根因：`configs/SemiDino.py` 将“完整 DINO 配置”和“semi_coco_detection 数据基座”同时放入 `_base_`，两者都定义了 `dataset_type`、`data_root`、`train_dataloader`、`val_dataloader` 等同名顶层键，触发 mmengine 的 base 合并重复键校验。
+
+2. 已完成修复并保持“尽量复用官方实现”：
+   - `_base_` 仅保留官方 DINO 配置：`dino-4scale_r50_8xb2-12e_coco.py`；
+   - 通过 `Config.fromfile(...)` 单独读取官方 `semi_coco_detection.py`；
+   - 使用 `deepcopy` 复用其 `labeled_dataset` / `unlabeled_dataset`，再按实验路径做必要覆盖。
+
+3. 为避免与 DINO base 中已有 dataloader 发生残留合并冲突：
+   - 在 `train_dataloader` 与 `val_dataloader` 覆盖时增加 `_delete_=True`，确保完整替换。
+
+4. 修复后效果：
+   - 消除 `Duplicate key is not allowed among bases` 错误来源；
+   - 继续保持“检测器走官方 DINO、半监督数据流复用官方 semi config”的实现路线，满足后续对齐 Semi-DETR 的基线要求。
+
+## 第四次工作（2026-04-13）
+
+### 用户原始提示词（完整记录）
+Traceback (most recent call last):\n  File "C:\Users\tanfl\Desktop\codes\semmi\SemiTrain.py", line 38, in <module>\n    main()\n  File "C:\Users\tanfl\Desktop\codes\semmi\SemiTrain.py", line 32, in main\n    cfg = Config.fromfile(DEFAULT_CONFIG_PATH)\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\Users\tanfl\.conda\envs\mm\Lib\site-packages\mmengine\config\config.py", line 461, in fromfile\n    cfg_dict, cfg_text, env_variables = Config._file2dict(\n                                        ^^^^^^^^^^^^^^^^^^\n  File "C:\Users\tanfl\.conda\envs\mm\Lib\site-packages\mmengine\config\config.py", line 947, in _file2dict\n    raise e\n  File "C:\Users\tanfl\.conda\envs\mm\Lib\site-packages\mmengine\config\config.py", line 925, in _file2dict\n    eval(codeobj, global_locals_var, global_locals_var)\n  File "C:\Users\tanfl\Desktop\codes\semmi\configs\SemiDino.py", line 87, in <module>\n    semi_dataset_cfg = Config.fromfile(\n                       ^^^^^^^^^^^^^^^^\n  File "C:\Users\tanfl\.conda\envs\mm\Lib\site-packages\mmengine\config\config.py", line 460, in fromfile\n    lazy_import is None and not Config._is_lazy_import(filename):\n                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "C:\Users\tanfl\.conda\envs\mm\Lib\site-packages\mmengine\config\config.py", line 1662, in _is_lazy_import\n    with open(filename, encoding='utf-8') as f:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: '../thirdparty/mmdetection-3.3.0/configs/_base_/datasets/semi_coco_detection.py'
+
+为什么会这样？我都找到这个文件了
+
+### 本次实现汇报（完整记录）
+1. 已定位根因：`_base_` 的相对路径由 mmengine 按配置文件位置处理，但在配置代码里手动调用 `Config.fromfile('../thirdparty/...')` 时，该相对路径会按“运行时工作目录”解释。Windows 下若你在 `semmi` 目录启动脚本，`../thirdparty` 会被解析到 `codes/thirdparty`，而不是 `semmi/thirdparty`，因此触发 `FileNotFoundError`。
+
+2. 已完成修复：
+   - 在 `configs/SemiDino.py` 中引入 `Path(__file__).resolve().parent`；
+   - 统一基于配置文件自身位置拼出 mmdetection 配置目录的绝对路径；
+   - `_base_` 与 `Config.fromfile` 都改为使用该绝对路径，消除运行目录差异带来的路径问题。
+
+3. 修复后行为：
+   - 无论你从哪个工作目录启动 `SemiTrain.py`，都能稳定定位到 `semmi/thirdparty/mmdetection-3.3.0/configs/...`；
+   - 保持“官方 DINO + 官方 semi 数据配置复用”的设计不变。
