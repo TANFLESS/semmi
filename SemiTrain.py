@@ -18,6 +18,7 @@ import sys
 
 from mmengine.config import Config
 from mmengine.runner import Runner
+from mmdet.utils import register_all_modules
 
 
 # 默认配置路径：可按需改成其他配置文件。
