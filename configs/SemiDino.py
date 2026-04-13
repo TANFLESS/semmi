@@ -39,9 +39,9 @@ SemiDino：基于 MMDetection 3.x 官方 SemiBaseDetector + DINO 的半监督目
 # data_root：数据集根目录。
 DATA_ROOT = 'data/coco/'
 # 有标注训练集标注文件。
-LABELED_ANN_FILE = 'annotations/instances_train2017.json'
+LABELED_ANN_FILE = 'semi_anns/instances_train2017.1@1.json'
 # 无标注训练集标注文件（需包含 categories 字段）。
-UNLABELED_ANN_FILE = 'annotations/instances_unlabeled2017.json'
+UNLABELED_ANN_FILE = 'semi_anns/instances_train2017.1@1-unlabeled.json'
 # 验证集标注文件。
 VAL_ANN_FILE = 'annotations/instances_val2017.json'
 
