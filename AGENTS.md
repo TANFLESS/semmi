@@ -219,3 +219,54 @@ Traceback (most recent call last):\n  File "C:\Users\tanfl\Desktop\codes\semmi\S
 3. 调整后结果：
    - 训练节奏、调度器和日志/ckpt行为尽可能贴近官方 DINO；
    - 同时保留半监督 teacher-student 验证与 EMA teacher 更新这两项半监督必需能力。
+
+## 第十一次工作（2026-04-14）
+
+### 用户原始提示词（完整记录）
+这段代码现在在单卡4090上运行良好，我现在打算把这段代码放到六卡3090上跑，做出你认为必要的修改。
+
+### 本次实现汇报（完整记录）
+1. 已对 `SemiTrain.py` 做“单卡/多卡统一入口”增强，确保迁移到 6 卡 3090 时不需要再改脚本主体：
+   - 新增命令行参数解析：`--config`、`--work-dir`、`--launcher`、`--local-rank/--local_rank`；
+   - 将 `cfg.launcher` 与命令行联动，支持 `torchrun` 场景下的 `--launcher pytorch`；
+   - 保留你要求的“训练脚本尽量简单”原则，仍然是读取配置并直接 `Runner.from_cfg(cfg)` + `runner.train()`。
+
+2. 已清理训练脚本中的导入时机问题：
+   - 删除顶层 `from mmdet.utils import register_all_modules`，避免在 thirdparty 路径注入前就触发导入失败；
+   - 继续采用“先 `_ensure_local_mmdet_importable()`，再延迟导入并注册 mmdet 模块”的稳定流程。
+
+3. 已对 `configs/SemiDino.py` 增加多卡训练关键参数入口并完成必要联动：
+   - 明确 `BATCH_SIZE` 为“单卡 batch size”；
+   - 新增 `TARGET_NUM_GPUS = 6`，用于表达当前目标是 6 卡训练；
+   - 将 `auto_scale_lr` 改为 `dict(enable=True, base_batch_size=BATCH_SIZE * TARGET_NUM_GPUS)`，使 6 卡下保持当前学习率基准不变，并支持未来按总 batch 自动线性缩放。
+
+4. 本次改动目标与效果：
+   - 目标是“从单卡 4090 平滑迁移到 6 卡 3090”，且不破坏现有配置结构；
+   - 通过 launcher 参数化 + auto_scale_lr 基准化，减少手工改配置和错配学习率的风险。
+
+## 第十二次工作（2026-04-14）
+
+### 用户原始提示词（完整记录）
+这段代码的上一版你改完后我不满意，请继续修改：
+1. 我希望你添加详细的说明，在单卡和六卡机上跑，我需要改哪些设置。
+2. 你确定“已修复并优化 mmdet 导入时机：去掉了顶层 mmdet 导入，保持先注入 thirdparty 路径、再延迟导入注册的顺序，避免多卡/新环境下因导入顺序导致的启动问题”不会导致新的问题吗？请再三确认。
+
+### 本次实现汇报（完整记录）
+1. 已新增 `训练启动说明.md`（中文）并给出“单卡 4090 / 六卡 3090”可直接执行的详细说明：
+   - 明确哪些设置需要关注：`BATCH_SIZE`、`TARGET_NUM_GPUS`、`auto_scale_lr`、`--launcher`、`--work-dir`、`--config`；
+   - 给出单卡与六卡的推荐启动命令；
+   - 给出六卡场景下 batch/显存调整建议与自动 LR 缩放行为说明；
+   - 给出开训前快速自检命令。
+
+2. 已针对你对导入时机稳定性的担忧做“再确认 + 强化实现”：
+   - `_ensure_local_mmdet_importable()` 改为显式检测并返回来源：优先 `site-packages`，其次 `thirdparty`；
+   - 若两者都不可用，会立刻抛出清晰 `ModuleNotFoundError`，避免后续在 Runner 深层阶段才报晦涩错误；
+   - `register_all_modules(init_default_scope=True)` 仍保持在 `main()` 内，且严格在路径检查之后、`Runner.from_cfg` 之前执行，确保 registry 初始化时机正确；
+   - 启动时新增日志：打印 `launcher`、`mmdet_source`、`work_dir`，便于你现场确认脚本到底使用了哪一路 mmdet。
+
+3. 已补充脚本命令行帮助文案：
+   - `--help` 中直接展示单卡/六卡启动示例；
+   - 降低后续复现实验时的沟通成本。
+
+4. 本次修改结论：
+   - 不是“仅口头保证不会出新问题”，而是通过“显式来源检测 + 失败即早报 + 启动时来源打印 + 文档化运行规范”把风险前置、可观测化。
