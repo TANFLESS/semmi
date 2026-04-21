@@ -42,9 +42,16 @@ VAL_IMG_PREFIX = 'val2017/'
 PATCH_SIZE_DIVISOR = 1
 
 # dataloader 相关。
+# 说明：
+# - BATCH_SIZE 是“单卡 batch size”（每个 GPU 上的 batch）；
+# - 从单卡 4090 迁移到 6 卡 3090 时，通常先保持单卡 batch 不变；
+# - 总 batch = BATCH_SIZE * TARGET_NUM_GPUS。
 BATCH_SIZE = 4
 NUM_WORKERS = 4
 SOURCE_RATIO = [1, 4]  # [有标注:无标注]
+
+# 多卡训练目标卡数（用于学习率自动缩放基准）。
+TARGET_NUM_GPUS = 6
 
 # 模型类别数与权重初始化。
 NUM_CLASSES = 80
@@ -256,5 +263,8 @@ vis_backends = [dict(type='LocalVisBackend', save_dir=VIS_BACKEND_SAVE_DIR)]
 visualizer = dict(type='DetLocalVisualizer', vis_backends=vis_backends, name='visualizer')
 work_dir = WORK_DIR
 
-# 与官方 DINO 基线保持一致的自动 LR 缩放基准。
-auto_scale_lr = dict(base_batch_size=16)
+# 自动学习率缩放设置。
+# 这里将 base_batch_size 设为“6 卡 * 单卡 batch”，
+# 这样在 6 卡 3090 上训练时会保持当前学习率不变；
+# 若未来改成其他卡数，MMEngine 会按总 batch 线性缩放学习率。
+auto_scale_lr = dict(enable=True, base_batch_size=BATCH_SIZE * TARGET_NUM_GPUS)
