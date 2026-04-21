@@ -35,7 +35,7 @@ VAL_ANN_FILE = 'annotations/instances_val2017.json'
 
 # 图像目录。
 LABELED_IMG_PREFIX = 'train2017/'
-UNLABELED_IMG_PREFIX = 'unlabeled2017/'
+UNLABELED_IMG_PREFIX = 'train2017/'
 VAL_IMG_PREFIX = 'val2017/'
 
 # DINO 预处理 pad 对齐粒度（保留为可调入口）。
